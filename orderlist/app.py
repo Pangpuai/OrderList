@@ -25,7 +25,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # ─────────────────────────────────────────────
 
 st.set_page_config(
-    page_title="ระบบสร้างใบสั่งซื้อ Giffarine",
+    page_title="สร้างใบสั่งซื้อ Giffarine โดย พพ&AIเพื่อนรัก",
     page_icon="📦",
     layout="wide",
 )
