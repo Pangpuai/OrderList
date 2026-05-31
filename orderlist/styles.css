@@ -1,0 +1,78 @@
+/* Mobile First */
+
+.block-container{
+    max-width:1200px;
+    padding-top:1rem;
+    padding-bottom:2rem;
+}
+
+h1,h2,h3{
+    color:#111;
+}
+
+.stTextInput input{
+    border-radius:10px;
+}
+
+.stNumberInput input{
+    border-radius:10px;
+}
+
+.stDateInput input{
+    border-radius:10px;
+}
+
+.stButton button{
+    width:100%;
+    border-radius:10px;
+    height:45px;
+}
+
+[data-testid="stMetric"]{
+    background:white;
+    border:1px solid #eaeaea;
+    border-radius:12px;
+    padding:15px;
+}
+
+[data-testid="stDataFrame"]{
+    border-radius:12px;
+}
+
+/* Tablet */
+
+@media (min-width:768px){
+
+    .block-container{
+        padding-left:2rem;
+        padding-right:2rem;
+    }
+
+}
+
+/* Desktop */
+
+@media (min-width:1200px){
+
+    .block-container{
+        max-width:1400px;
+    }
+
+}
+
+.header-card{
+    background:white;
+    border:1px solid #eaeaea;
+    border-radius:16px;
+    padding:20px;
+    margin-bottom:20px;
+}
+
+.header-card h1{
+    margin:0;
+}
+
+.header-card p{
+    color:#888;
+    margin-top:5px;
+}
