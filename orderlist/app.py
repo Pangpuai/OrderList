@@ -16,6 +16,10 @@ from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.enums import TA_RIGHT
+from reportlab.platypus import Image as RLImage
+
 
 # All paths resolved relative to this file — works regardless of cwd when streamlit is launched
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -25,7 +29,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # ─────────────────────────────────────────────
 
 st.set_page_config(
-    page_title="สร้างใบสั่งซื้อ Giffarine โดย พพ&AIเพื่อนรัก",
+    page_title="ระบบสร้างใบสั่งซื้อ Giffarine ",
     page_icon="📦",
     layout="wide",
 )
@@ -37,6 +41,13 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+css_path = os.path.join(BASE_DIR, "styles.css")
+
+with open(css_path, encoding="utf-8") as f:
+    st.markdown(
+        f"<style>{f.read()}</style>",
+        unsafe_allow_html=True
+    )
 # ─────────────────────────────────────────────
 # LOAD PRODUCTS
 # ─────────────────────────────────────────────
@@ -88,34 +99,102 @@ def add_item(item, qty: int):
     })
     st.toast(f"เพิ่ม {item['product_name']} แล้ว ✅")
 
-
-def build_pdf(orders_df, member_id, customer_name, order_date_str):
+def build_pdf(orders_df, member_id, customer_name, Tai_name, order_date_str):
 
     pdf_buffer = BytesIO()
 
     # ฟอนต์ไทย
-    font_path = os.path.join(BASE_DIR, "font", "THSarabunNew.ttf")
-
-    pdfmetrics.registerFont(
-        TTFont("THSarabunNew.ttf", font_path)
+    font_path = os.path.join(
+    BASE_DIR,
+    "font",
+    "THSarabunNew.ttf"
     )
 
-    doc = SimpleDocTemplate(pdf_buffer)
+    font_bold = os.path.join(
+        BASE_DIR,
+        "font",
+        "THSarabunNew.ttf"
+    )
+
+    font_keng = os.path.join(
+        BASE_DIR,
+        "font",
+        "aying01unicode.ttf"
+    )
+
+    pdfmetrics.registerFont(
+        TTFont(
+            "THSarabunNew",
+            font_path
+        )
+    )
+
+    pdfmetrics.registerFont(
+        TTFont(
+            "aying01unicode",
+            font_keng
+        )
+    )
+
+    doc = SimpleDocTemplate(
+    pdf_buffer,
+    leftMargin=70,
+    rightMargin=50,
+    topMargin=50,
+    bottomMargin=50
+)
 
     styles = getSampleStyleSheet()
-    styles["Title"].fontName = "THSarabunNew.ttf"
-    styles["Normal"].fontName = "THSarabunNew.ttf"
 
-    styles["Title"].fontSize = 18
-    styles["Normal"].fontSize = 14
-    styles["Normal"].leading = 22
+    title_style = ParagraphStyle(
+        "MyTitle",
+        parent=styles["Title"],
+        fontName="THSarabunNew",
+        fontSize=22
+    )
+
+    normal_style = ParagraphStyle(
+        "MyNormal",
+        parent=styles["Normal"],
+        fontName="THSarabunNew",
+        fontSize=16,
+        leading=20
+    )
+    normal_style.leading = 20
+
+    customer_style = ParagraphStyle(
+        "CustomerInfo",
+        parent=normal_style,
+        fontName="THSarabunNew",
+        leftIndent=20
+    )  
+    Tai_name_style = ParagraphStyle(
+        "Tai_name",
+        parent=normal_style,
+        fontName="aying01unicode",
+        leftIndent=25,
+        fontSize=14,
+    )
+
+    summary_style = ParagraphStyle(
+        "Summary",
+        parent=normal_style,
+        leftIndent=20
+    )
+
+    right_style = ParagraphStyle(
+        "RightText",
+        parent=normal_style,
+        alignment=TA_RIGHT
+    )
 
     content = []
 
     title = Paragraph(
-        "ใบสั่งซื้อสินค้า GIFFARINE )",
-        styles["Title"]
+        "ใบสั่งซื้อสินค้า GIFFARINE  ",
+        title_style
     )
+    
 
     content.append(title)
     content.append(Spacer(1, 12))
@@ -123,21 +202,28 @@ def build_pdf(orders_df, member_id, customer_name, order_date_str):
     content.append(
         Paragraph(
             f"รหัสสมาชิก : {member_id or '-'}",
-            styles["Normal"]
+            customer_style
         )
     )
 
     content.append(
         Paragraph(
             f"ชื่อผู้สั่งซื้อ : {customer_name or '-'}",
-            styles["Normal"]
+            customer_style
+        )
+    )
+    
+    content.append(
+        Paragraph(
+            f"ၸိုဝ်ႈၵူၼ်းသင်ႇသိုဝ်ႉ : &nbsp;&nbsp;&nbsp; {Tai_name or '-'}",
+            Tai_name_style
         )
     )
 
     content.append(
         Paragraph(
             f"วันที่สั่งซื้อ : {order_date_str}",
-            styles["Normal"]
+            customer_style
         )
     )
 
@@ -168,13 +254,24 @@ def build_pdf(orders_df, member_id, customer_name, order_date_str):
             f"{row['ยอดรวม']:,.2f}",
         ])
 
-    table = Table(table_data)
+    table = Table(
+    table_data,
+    colWidths=[
+        35,
+        60,
+        180,
+        65,
+        65,
+        45,
+        70
+    ]
+)
 
     table.setStyle(
         TableStyle([
             ("GRID", (0,0), (-1,-1), 1, colors.black),
-            ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
-            ("FONTNAME", (0,0), (-1,-1), "THSarabunNew.ttf"),
+            ("BACKGROUND", (0,0), (-1,0), colors.lightslategrey),
+            ("FONTNAME", (0,0), (-1,-1), "THSarabunNew"),
         ])
     )
 
@@ -193,14 +290,30 @@ def build_pdf(orders_df, member_id, customer_name, order_date_str):
     content.append(
         Paragraph(
             f"จำนวนสินค้ารวม : {total_qty:,} ชิ้น",
-            styles["Normal"]
+            summary_style
         )
     )
 
     content.append(
         Paragraph(
             f"ยอดรวมทั้งหมด : {total_amount:,.2f} บาท",
-            styles["Normal"]
+            summary_style
+        )
+    )
+    
+    content.append(
+        Paragraph(
+            "รับสินค้า โดย คำนวล รหัสสมาชิก 11152465",
+            summary_style
+        )
+    )
+    
+    content.append(Spacer(1, 20))
+
+    content.append(
+        Paragraph(
+            "ทดลองทำเพื่อให้สะดวกต่อการทำงาน และ เพื่อใช้งานส่วนตัวเท่านั้น<br/>อิwอิ",
+            right_style
         )
     )
 
@@ -215,21 +328,28 @@ def build_pdf(orders_df, member_id, customer_name, order_date_str):
 
 st.subheader("👤 ข้อมูลผู้สั่งซื้อ")
 
-c1, c2, c3 = st.columns([1, 2, 1])
+c1, c2, c3, c4 = st.columns([1, 2, 1, 1])
 with c1:
     member_id = st.text_input("รหัสสมาชิก", placeholder="เช่น 1234567")
 with c2:
     customer_name = st.text_input("ชื่อผู้สั่งซื้อ", placeholder="ชื่อ-นามสกุล")
 with c3:
+    Tai_name = st.text_input("ၸိုဝ်ႈၵူၼ်းသင်ႇသိုဝ်ႉ", placeholder="ภาษาไทใหญ่")
+with c4:
     order_date = st.date_input("วันที่สั่งซื้อ", value=date.today(), format="DD/MM/YYYY")
-
+    
 st.divider()
 
 # ─────────────────────────────────────────────
 # TITLE
 # ─────────────────────────────────────────────
 
-st.title("📦 สร้างใบสั่งซื้อสินค้า Giffarine โดย พพ&AIเพื่อนรัก")
+st.markdown("""
+<div class="header-card">
+    <h1>📦 ระบบสร้างใบสั่งซื้อสินค้า Giffarine โดย พพ&AI เพื่อนรัก </h1>
+    <p>Order Management System</p>
+</div>
+""", unsafe_allow_html=True)
 st.divider()
 
 # ─────────────────────────────────────────────
@@ -257,7 +377,7 @@ with tab_code:
                 st.rerun()
 
 with tab_search:
-    search_term = st.text_input("ชื่อสินค้า", placeholder="เช่น ครีม, แชมพู, วิตามิน", key="search_name")
+    search_term = st.text_input("ชื่อสินค้า", placeholder="แต่ชื่อต้องตรงเป้ะนะ ไม่ขึ้นให้หรอก ไม่ทำ วะฮ่า", key="search_name")
     if search_term:
         results = products[products["product_name"].str.contains(search_term, case=False, na=False)]
         if results.empty:
@@ -352,6 +472,7 @@ with col_xl:
         info_df = pd.DataFrame([
             ["รหัสสมาชิก",    member_id],
             ["ชื่อผู้สั่งซื้อ", customer_name],
+            ["ชื่อเล่น", Tai_name],
             ["วันที่สั่งซื้อ",  order_date.strftime("%d/%m/%Y")],
         ])
         info_df.to_excel(writer, sheet_name="Order", startrow=0, index=False, header=False)
@@ -383,6 +504,7 @@ with col_pdf:
                         clean,
                         member_id,
                         customer_name,
+                        Tai_name,
                         order_date.strftime("%d/%m/%Y"),
                     )
                     st.download_button(
