@@ -17,7 +17,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib.enums import TA_RIGHT
+from reportlab.lib.enums import TA_RIGHT, TA_CENTER
 from reportlab.platypus import Image as RLImage
 
 
@@ -43,11 +43,13 @@ st.markdown("""
 
 css_path = os.path.join(BASE_DIR, "styles.css")
 
-with open(css_path, encoding="utf-8") as f:
-    st.markdown(
-        f"<style>{f.read()}</style>",
-        unsafe_allow_html=True
-    )
+if os.path.exists(css_path):
+    with open(css_path, encoding="utf-8") as f:
+        st.markdown(
+            f"<style>{f.read()}</style>",
+            unsafe_allow_html=True
+        )
+
 # ─────────────────────────────────────────────
 # LOAD PRODUCTS
 # ─────────────────────────────────────────────
@@ -76,73 +78,74 @@ except FileNotFoundError:
 if "orders" not in st.session_state:
     st.session_state.orders = []
 
+if "gifts" not in st.session_state:
+    st.session_state.gifts = []
+
 # ─────────────────────────────────────────────
 # HELPERS
 # ─────────────────────────────────────────────
 
-def add_item(item, qty: int):
-    """Add a product to the cart, or increment quantity if already present."""
+def add_item(item, qty: int, is_gift: bool = False):
+    """Add a product to the cart or gift list, incrementing quantity if already present."""
     code = str(item["product_code"])
-    for order in st.session_state.orders:
+    target = st.session_state.gifts if is_gift else st.session_state.orders
+
+    for order in target:
         if order["รหัสสินค้า"] == code:
             order["จำนวน"] += qty
             order["ยอดรวม"] = order["ราคาสมาชิก"] * order["จำนวน"]
             st.toast(f"เพิ่มจำนวน {item['product_name']} แล้ว ✅")
             return
-    st.session_state.orders.append({
-        "รหัสสินค้า": code,
-        "ชื่อสินค้า": item["product_name"],
-        "ราคาเต็ม":   float(item["full_price_thb"]),
-        "ราคาสมาชิก": float(item["member_price_thb"]),
-        "จำนวน":      int(qty),
-        "ยอดรวม":    float(item["member_price_thb"]) * int(qty),
-    })
-    st.toast(f"เพิ่ม {item['product_name']} แล้ว ✅")
 
-def build_pdf(orders_df, member_id, customer_name, Tai_name, order_date_str):
+    if is_gift:
+        target.append({
+            "รหัสสินค้า": code,
+            "ชื่อสินค้า": f"Free {item['product_name']}",
+            "ราคาเต็ม":   0.0,
+            "ราคาสมาชิก": 0.0,
+            "จำนวน":      int(qty),
+            "ยอดรวม":     0.0,
+        })
+    else:
+        target.append({
+            "รหัสสินค้า": code,
+            "ชื่อสินค้า": item["product_name"],
+            "ราคาเต็ม":   float(item["full_price_thb"]),
+            "ราคาสมาชิก": float(item["member_price_thb"]),
+            "จำนวน":      int(qty),
+            "ยอดรวม":     float(item["member_price_thb"]) * int(qty),
+        })
+
+    label = "ของแถม" if is_gift else "สินค้า"
+    st.toast(f"เพิ่ม{label} {item['product_name']} แล้ว ✅")
+
+
+def register_fonts():
+    """Register Thai fonts once; safe to call multiple times."""
+    font_path = os.path.join(BASE_DIR, "font", "THSarabunNew.ttf")
+    font_keng  = os.path.join(BASE_DIR, "font", "aying01unicode.ttf")
+    try:
+        pdfmetrics.registerFont(TTFont("THSarabunNew", font_path))
+    except Exception:
+        pass
+    try:
+        pdfmetrics.registerFont(TTFont("aying01unicode", font_keng))
+    except Exception:
+        pass
+
+
+def build_pdf(orders_df, gifts_df, member_id, customer_name, Tai_name, order_date_str, order_status):
 
     pdf_buffer = BytesIO()
-
-    # ฟอนต์ไทย
-    font_path = os.path.join(
-    BASE_DIR,
-    "font",
-    "THSarabunNew.ttf"
-    )
-
-    font_bold = os.path.join(
-        BASE_DIR,
-        "font",
-        "THSarabunNew.ttf"
-    )
-
-    font_keng = os.path.join(
-        BASE_DIR,
-        "font",
-        "aying01unicode.ttf"
-    )
-
-    pdfmetrics.registerFont(
-        TTFont(
-            "THSarabunNew",
-            font_path
-        )
-    )
-
-    pdfmetrics.registerFont(
-        TTFont(
-            "aying01unicode",
-            font_keng
-        )
-    )
+    register_fonts()
 
     doc = SimpleDocTemplate(
-    pdf_buffer,
-    leftMargin=70,
-    rightMargin=50,
-    topMargin=50,
-    bottomMargin=50
-)
+        pdf_buffer,
+        leftMargin=70,
+        rightMargin=50,
+        topMargin=50,
+        bottomMargin=50,
+    )
 
     styles = getSampleStyleSheet()
 
@@ -150,7 +153,7 @@ def build_pdf(orders_df, member_id, customer_name, Tai_name, order_date_str):
         "MyTitle",
         parent=styles["Title"],
         fontName="THSarabunNew",
-        fontSize=22
+        fontSize=22,
     )
 
     normal_style = ParagraphStyle(
@@ -158,16 +161,16 @@ def build_pdf(orders_df, member_id, customer_name, Tai_name, order_date_str):
         parent=styles["Normal"],
         fontName="THSarabunNew",
         fontSize=16,
-        leading=20
+        leading=20,
     )
-    normal_style.leading = 20
 
     customer_style = ParagraphStyle(
         "CustomerInfo",
         parent=normal_style,
         fontName="THSarabunNew",
-        leftIndent=20
-    )  
+        leftIndent=20,
+    )
+
     Tai_name_style = ParagraphStyle(
         "Tai_name",
         parent=normal_style,
@@ -179,149 +182,201 @@ def build_pdf(orders_df, member_id, customer_name, Tai_name, order_date_str):
     summary_style = ParagraphStyle(
         "Summary",
         parent=normal_style,
-        leftIndent=20
+        leftIndent=20,
     )
 
     right_style = ParagraphStyle(
         "RightText",
         parent=normal_style,
-        alignment=TA_RIGHT
+        alignment=TA_RIGHT,
+    )
+
+    # ── FIX 2: product_style defined so text wraps inside the cell ──
+    product_style = ParagraphStyle(
+        "ProductCell",
+        parent=normal_style,
+        fontName="THSarabunNew",
+        fontSize=14,
+        leading=17,
+        wordWrap="CJK",
+    )
+
+    gift_product_style = ParagraphStyle(
+        "GiftProductCell",
+        parent=product_style,
+        textColor=colors.black,
+    )
+
+    section_style = ParagraphStyle(
+        "SectionHeading",
+        parent=normal_style,
+        fontName="THSarabunNew",
+        fontSize=18,
+        leading=22,
+        spaceAfter=6,
     )
 
     content = []
 
-    title = Paragraph(
-        "ใบสั่งซื้อสินค้า GIFFARINE  ",
-        title_style
-    )
-    
-
-    content.append(title)
+    # ── Header ──────────────────────────────
+    content.append(Paragraph("ใบสั่งซื้อสินค้า GIFFARINE  ", title_style))
+    content.append(Spacer(1, 12))
+    content.append(Paragraph(f"รหัสสมาชิก : {member_id or '-'}", customer_style))
+    content.append(Paragraph(f"ชื่อผู้สั่งซื้อ : {customer_name or '-'}", customer_style))
+    content.append(Paragraph(f"ၸိုဝ်ႈၵူၼ်းသင်ႇသိုဝ်ႉ : &nbsp;&nbsp;&nbsp; {Tai_name or '-'}", Tai_name_style))
+    content.append(Paragraph(f"วันที่สั่งซื้อ : {order_date_str}", customer_style))
     content.append(Spacer(1, 12))
 
-    content.append(
-        Paragraph(
-            f"รหัสสมาชิก : {member_id or '-'}",
-            customer_style
-        )
-    )
+    # ── Orders table ─────────────────────────
+    usable_width = doc.width
 
-    content.append(
-        Paragraph(
-            f"ชื่อผู้สั่งซื้อ : {customer_name or '-'}",
-            customer_style
-        )
-    )
-    
-    content.append(
-        Paragraph(
-            f"ၸိုဝ်ႈၵူၼ်းသင်ႇသိုဝ်ႉ : &nbsp;&nbsp;&nbsp; {Tai_name or '-'}",
-            Tai_name_style
-        )
-    )
+    col_widths = [
+        usable_width * 0.07,  # ลำดับ
+        usable_width * 0.12,  # รหัสสินค้า
+        usable_width * 0.37,  # ชื่อสินค้า
+        usable_width * 0.12,  # ราคาเต็ม
+        usable_width * 0.12,  # ราคาสมาชิก
+        usable_width * 0.08,  # จำนวน
+        usable_width * 0.12,  # รวม
+    ]
 
-    content.append(
-        Paragraph(
-            f"วันที่สั่งซื้อ : {order_date_str}",
-            customer_style
-        )
-    )
+    table_header = ["ลำดับ", "รหัสสินค้า", "ชื่อสินค้า", "ราคาเต็ม", "ราคาสมาชิก", "จำนวน", "รวม"]
+    table_data = [table_header]
 
-    content.append(Spacer(1, 12))
-
-    table_data = [[
-        "ลำดับ",
-        "รหัสสินค้า",
-        "ชื่อสินค้า",
-        "ราคาเต็ม",
-        "ราคาสมาชิก",
-        "จำนวน",
-        "รวม"
-    ]]
-
-    for i, (_, row) in enumerate(
-        orders_df.iterrows(),
-        start=1
-    ):
-
+    for i, (_, row) in enumerate(orders_df.iterrows(), start=1):
         table_data.append([
             str(i),
             str(row["รหัสสินค้า"]),
-            str(row["ชื่อสินค้า"]),
+            Paragraph(str(row["ชื่อสินค้า"]), product_style),  # FIX 2: wraps
             f"{row['ราคาเต็ม']:,.2f}",
             f"{row['ราคาสมาชิก']:,.2f}",
             str(int(row["จำนวน"])),
             f"{row['ยอดรวม']:,.2f}",
         ])
 
-    table = Table(
-    table_data,
-    colWidths=[
-        35,
-        60,
-        180,
-        65,
-        65,
-        45,
-        70
-    ]
-)
+    table = Table(table_data, colWidths=col_widths)
+    table.setStyle(TableStyle([
+    ("GRID",       (0, 0), (-1, -1), 1, colors.black),
+    ("BACKGROUND", (0, 0), (-1, 0), colors.lightskyblue),
 
-    table.setStyle(
-        TableStyle([
-            ("GRID", (0,0), (-1,-1), 1, colors.black),
-            ("BACKGROUND", (0,0), (-1,0), colors.lightslategrey),
-            ("FONTNAME", (0,0), (-1,-1), "THSarabunNew"),
-        ])
-    )
+    ("FONTNAME",   (0, 0), (-1, -1), "THSarabunNew"),
+    ("FONTSIZE",   (0, 0), (-1, -1), 14),
+
+    ("VALIGN",     (0, 0), (-1, -1), "MIDDLE"),
+
+    # Header กลางทั้งหมด
+    ("ALIGN",      (0, 0), (-1, 0), "CENTER"),
+
+    # ลำดับ
+    ("ALIGN",      (0, 1), (0, -1), "CENTER"),
+
+    # รหัสสินค้า
+    ("ALIGN",      (1, 1), (1, -1), "CENTER"),
+
+    # ชื่อสินค้า
+    ("ALIGN",      (2, 1), (2, -1), "LEFT"),
+
+    # ราคาเต็ม
+    ("ALIGN",      (3, 1), (3, -1), "RIGHT"),
+
+    # ราคาสมาชิก
+    ("ALIGN",      (4, 1), (4, -1), "RIGHT"),
+
+    # จำนวน
+    ("ALIGN",      (5, 1), (5, -1), "CENTER"),
+
+    # รวม
+    ("ALIGN",      (6, 1), (6, -1), "RIGHT"),
+    
+    ("TOPPADDING",    (0, 0), (-1, 0), 6),
+    ("BOTTOMPADDING", (0, 0), (-1, 0), 10),
+    ("LEFTPADDING",  (0,0), (-1,-1), 4),
+    ("RIGHTPADDING", (0,0), (-1,-1), 4),
+]))
 
     content.append(table)
-
     content.append(Spacer(1, 15))
 
-    total_qty = int(
-        orders_df["จำนวน"].sum()
-    )
+    # ── Summary ───────────────────────────────
+    total_qty    = int(orders_df["จำนวน"].sum())
+    total_amount = float(orders_df["ยอดรวม"].sum())
 
-    total_amount = float(
-        orders_df["ยอดรวม"].sum()
-    )
+    content.append(Paragraph(f"จำนวนสินค้ารวม : {total_qty:,} ชิ้น", summary_style))
+    content.append(Paragraph(f"ยอดรวมทั้งหมด : <font color='red'>{total_amount:,.2f}</font> บาท", summary_style))
+    content.append(Paragraph("รับสินค้า โดย คำนวล รหัสสมาชิก 11152465", summary_style))
 
-    content.append(
-        Paragraph(
-            f"จำนวนสินค้ารวม : {total_qty:,} ชิ้น",
-            summary_style
-        )
+    # ── Status ────────────────────────────────
+    status_color = colors.black
+    status_style = ParagraphStyle(
+        "StatusText",
+        parent=normal_style,
+        textColor=status_color,
+        fontName="THSarabunNew",
+        fontSize=16,
+        leftIndent=20,
     )
+    content.append(Spacer(1, 8))
+    content.append(Paragraph(f"สถานะ : {order_status}", status_style))
 
-    content.append(
-        Paragraph(
-            f"ยอดรวมทั้งหมด : {total_amount:,.2f} บาท",
-            summary_style
-        )
-    )
-    
-    content.append(
-        Paragraph(
-            "รับสินค้า โดย คำนวล รหัสสมาชิก 11152465",
-            summary_style
-        )
-    )
-    
+    # ── Free Gift table ───────────────────────
+    if not gifts_df.empty:
+        content.append(Spacer(1, 20))
+        content.append(Paragraph("ของแถม (Free Gift)", section_style))
+
+        gift_data = [["ลำดับ", "รหัสสินค้า", "ชื่อสินค้า", "จำนวน", "ราคา"]]
+
+        for i, (_, row) in enumerate(gifts_df.iterrows(), start=1):
+            gift_data.append([
+                str(i),
+                str(row["รหัสสินค้า"]),
+                Paragraph(str(row["ชื่อสินค้า"]), gift_product_style),
+                str(int(row["จำนวน"])),
+                "Free",
+            ])
+            
+        gift_widths = [
+            usable_width * 0.07,
+            usable_width * 0.12,
+            usable_width * 0.53,
+            usable_width * 0.08,
+            usable_width * 0.20,
+        ]
+
+        gift_table = Table(gift_data, colWidths=gift_widths)
+        gift_table.setStyle(TableStyle([
+            ("GRID",       (0, 0), (-1, -1), 1, colors.black),
+            ("BACKGROUND", (0, 0), (-1, 0), colors.lightgreen),
+
+            ("FONTNAME",   (0, 0), (-1, -1), "THSarabunNew"),
+            ("FONTSIZE",   (0, 0), (-1, -1), 14),
+
+            ("VALIGN",     (0, 0), (-1, -1), "MIDDLE"),
+
+            ("ALIGN",      (0, 0), (-1, 0), "CENTER"),
+
+            ("ALIGN",      (0, 1), (0, -1), "CENTER"),
+            ("ALIGN",      (1, 1), (1, -1), "CENTER"),
+            ("ALIGN",      (2, 1), (2, -1), "LEFT"),
+            ("ALIGN",      (3, 1), (3, -1), "CENTER"),
+            ("ALIGN",      (4, 1), (4, -1), "CENTER"),
+            
+            ("TOPPADDING",    (0, 0), (-1, 0), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 10),
+        ]))
+
+        content.append(gift_table)
+
     content.append(Spacer(1, 20))
-
-    content.append(
-        Paragraph(
-            "ทดลองทำเพื่อให้สะดวกต่อการทำงาน และ เพื่อใช้งานส่วนตัวเท่านั้น<br/>อิwอิ",
-            right_style
-        )
-    )
+    content.append(Paragraph(
+        "ทดลองทำเพื่อให้สะดวกต่อการทำงาน และ เพื่อใช้งานส่วนตัวเท่านั้น<br/>อิwอิ",
+        right_style,
+    ))
 
     doc.build(content)
-
     pdf_buffer.seek(0)
-
     return pdf_buffer.getvalue()
+
+
 # ─────────────────────────────────────────────
 # CUSTOMER INFO
 # ─────────────────────────────────────────────
@@ -337,7 +392,7 @@ with c3:
     Tai_name = st.text_input("ၸိုဝ်ႈၵူၼ်းသင်ႇသိုဝ်ႉ", placeholder="ภาษาไทใหญ่")
 with c4:
     order_date = st.date_input("วันที่สั่งซื้อ", value=date.today(), format="DD/MM/YYYY")
-    
+
 st.divider()
 
 # ─────────────────────────────────────────────
@@ -353,7 +408,7 @@ st.markdown("""
 st.divider()
 
 # ─────────────────────────────────────────────
-# ADD PRODUCT
+# ADD PRODUCT  (Regular orders)
 # ─────────────────────────────────────────────
 
 st.subheader("➕ เพิ่มสินค้า")
@@ -373,7 +428,7 @@ with tab_code:
             if found.empty:
                 st.error(f"❌ ไม่พบรหัสสินค้า **{product_code}**")
             else:
-                add_item(found.iloc[0], qty_code)
+                add_item(found.iloc[0], qty_code, is_gift=False)
                 st.rerun()
 
 with tab_search:
@@ -392,7 +447,52 @@ with tab_search:
                     st.write(f"ราคาสมาชิก ฿{row['member_price_thb']:,.0f}")
                 with cc:
                     if st.button("เพิ่ม", key=f"srch_{row['product_code']}"):
-                        add_item(row, 1)
+                        add_item(row, 1, is_gift=False)
+                        st.rerun()
+
+st.divider()
+
+# ─────────────────────────────────────────────
+# FREE GIFT SECTION
+# ─────────────────────────────────────────────
+
+st.subheader("🎁 เพิ่มของแถม (Free Gift)")
+
+gift_tab_code, gift_tab_search = st.tabs(["🔢 ค้นหาด้วยรหัสสินค้า", "🔍 ค้นหาด้วยชื่อสินค้า"])
+
+with gift_tab_code:
+    g1, g2, g3 = st.columns([2, 1, 1])
+    with g1:
+        gift_code = st.text_input("รหัสสินค้า", placeholder="เช่น 16965", key="gift_input_code")
+    with g2:
+        gift_qty_code = st.number_input("จำนวน", min_value=1, value=1, key="gift_qty_code")
+    with g3:
+        st.write(""); st.write("")
+        if st.button("เพิ่มของแถม", use_container_width=True, key="gift_btn_code"):
+            found = products[products["product_code"] == gift_code.strip()]
+            if found.empty:
+                st.error(f"❌ ไม่พบรหัสสินค้า **{gift_code}**")
+            else:
+                add_item(found.iloc[0], gift_qty_code, is_gift=True)
+                st.rerun()
+
+with gift_tab_search:
+    gift_search_term = st.text_input("ชื่อสินค้า", placeholder="ค้นหาสินค้าที่ต้องการเป็นของแถม", key="gift_search_name")
+    if gift_search_term:
+        gift_results = products[products["product_name"].str.contains(gift_search_term, case=False, na=False)]
+        if gift_results.empty:
+            st.warning("ไม่พบสินค้าที่ตรงกัน")
+        else:
+            st.caption(f"พบ {len(gift_results):,} รายการ (แสดง 10 อันดับแรก)")
+            for _, row in gift_results.head(10).iterrows():
+                ca, cb, cc = st.columns([4, 2, 1])
+                with ca:
+                    st.write(f"**{row['product_name']}** — รหัส `{row['product_code']}`")
+                with cb:
+                    st.write(f"ราคาสมาชิก ฿{row['member_price_thb']:,.0f}")
+                with cc:
+                    if st.button("เพิ่มแถม", key=f"gift_srch_{row['product_code']}"):
+                        add_item(row, 1, is_gift=True)
                         st.rerun()
 
 st.divider()
@@ -401,10 +501,10 @@ st.divider()
 # ORDER TABLE
 # ─────────────────────────────────────────────
 
+st.subheader("🛒 รายการสั่งซื้อ")
+
 if len(st.session_state.orders) == 0:
     st.warning("ยังไม่มีรายการสินค้า")
-
-st.subheader("🛒 รายการสั่งซื้อ")
 
 df = pd.DataFrame(st.session_state.orders)
 
@@ -420,10 +520,11 @@ if not df.empty:
             "ลำดับ":      st.column_config.NumberColumn(disabled=True, width="small"),
             "รหัสสินค้า": st.column_config.TextColumn(disabled=True, width="small"),
             "ชื่อสินค้า": st.column_config.TextColumn(disabled=True),
-            "ราคาเต็ม":   st.column_config.NumberColumn(disabled=True, format="฿%.0f"),
-            "ราคาสมาชิก": st.column_config.NumberColumn(disabled=True, format="฿%.0f"),
+            # FIX 1: remove format string so numeric values display correctly left-aligned
+            "ราคาเต็ม":   st.column_config.NumberColumn(disabled=True),
+            "ราคาสมาชิก": st.column_config.NumberColumn(disabled=True),
             "จำนวน":      st.column_config.NumberColumn(min_value=1, step=1, width="small"),
-            "ยอดรวม":    st.column_config.NumberColumn(disabled=True, format="฿%.2f"),
+            "ยอดรวม":     st.column_config.NumberColumn(disabled=True),
             "ลบ":         st.column_config.CheckboxColumn("🗑", width="small"),
         },
     )
@@ -458,6 +559,68 @@ m3.metric("ยอดรวมทั้งหมด", f"฿{total_thb:,.2f}")
 st.divider()
 
 # ─────────────────────────────────────────────
+# FREE GIFT TABLE
+# ─────────────────────────────────────────────
+
+st.subheader("🎁 รายการของแถม")
+
+gift_df = pd.DataFrame(st.session_state.gifts)
+
+if gift_df.empty:
+    st.info("ยังไม่มีรายการของแถม")
+    clean_gifts = gift_df
+else:
+    gift_df.insert(0, "ลำดับ", range(1, len(gift_df) + 1))
+    gift_df["ลบ"] = False
+
+    edited_gifts = st.data_editor(
+        gift_df,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "ลำดับ":      st.column_config.NumberColumn(disabled=True, width="small"),
+            "รหัสสินค้า": st.column_config.TextColumn(disabled=True, width="small"),
+            "ชื่อสินค้า": st.column_config.TextColumn(disabled=True),
+            "ราคาเต็ม":   st.column_config.NumberColumn(disabled=True),
+            "ราคาสมาชิก": st.column_config.NumberColumn(disabled=True),
+            "จำนวน":      st.column_config.NumberColumn(min_value=1, step=1, width="small"),
+            "ยอดรวม":     st.column_config.NumberColumn(disabled=True),
+            "ลบ":         st.column_config.CheckboxColumn("🗑", width="small"),
+        },
+    )
+
+    clean_gifts = edited_gifts[edited_gifts["ลบ"] == False].drop(columns=["ลบ", "ลำดับ"])
+    st.session_state.gifts = clean_gifts.to_dict("records")
+
+gcol_del, gcol_clear, _ = st.columns([1, 1, 4])
+with gcol_del:
+    if st.button("🗑 ลบของแถมที่เลือก", use_container_width=True):
+        st.rerun()
+with gcol_clear:
+    if st.button("❌ ล้างของแถมทั้งหมด", use_container_width=True):
+        st.session_state.gifts = []
+        st.rerun()
+
+st.divider()
+
+# ─────────────────────────────────────────────
+# ORDER STATUS  (FIX 4)
+# ─────────────────────────────────────────────
+
+st.subheader("📋 สถานะการสั่งซื้อ")
+
+status_options = ["ปกติ  ", "ปิดยอด"]
+order_status = st.selectbox(
+    "เลือกสถานะ",
+    options=status_options,
+    index=0,
+    key="order_status",
+)
+
+
+st.divider()
+
+# ─────────────────────────────────────────────
 # EXPORT
 # ─────────────────────────────────────────────
 
@@ -472,16 +635,23 @@ with col_xl:
         info_df = pd.DataFrame([
             ["รหัสสมาชิก",    member_id],
             ["ชื่อผู้สั่งซื้อ", customer_name],
-            ["ชื่อเล่น", Tai_name],
+            ["ชื่อเล่น",       Tai_name],
             ["วันที่สั่งซื้อ",  order_date.strftime("%d/%m/%Y")],
+            ["สถานะ",          order_status],
         ])
         info_df.to_excel(writer, sheet_name="Order", startrow=0, index=False, header=False)
         if not clean.empty:
-            clean.to_excel(writer, sheet_name="Order", startrow=4, index=False)
+            clean.to_excel(writer, sheet_name="Order", startrow=6, index=False)
             ws = writer.sheets["Order"]
             for i, col in enumerate(clean.columns):
                 col_width = max(len(str(col)), clean[col].astype(str).str.len().max()) + 4
                 ws.set_column(i, i, min(col_width, 45))
+        if not clean_gifts.empty:
+            start_row = 6 + len(clean) + 3
+            pd.DataFrame([["ของแถม (Free Gift)"]]).to_excel(
+                writer, sheet_name="Order", startrow=start_row, index=False, header=False
+            )
+            clean_gifts.to_excel(writer, sheet_name="Order", startrow=start_row + 1, index=False)
 
     st.download_button(
         "📥 Export Excel",
@@ -500,12 +670,15 @@ with col_pdf:
         if st.button("📄 สร้าง PDF", use_container_width=True):
             with st.spinner("กำลังสร้าง PDF..."):
                 try:
+                    gifts_for_pdf = pd.DataFrame(st.session_state.gifts) if st.session_state.gifts else pd.DataFrame()
                     pdf_bytes = build_pdf(
                         clean,
+                        gifts_for_pdf,
                         member_id,
                         customer_name,
                         Tai_name,
                         order_date.strftime("%d/%m/%Y"),
+                        order_status,
                     )
                     st.download_button(
                         "⬇️ ดาวน์โหลด PDF",
